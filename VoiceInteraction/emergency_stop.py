@@ -10,9 +10,17 @@
 import threading
 import logging
 import sys
-import termios
-import tty
-import select
+import platform
+
+# 根据操作系统导入不同的键盘监听库
+IS_WINDOWS = platform.system() == "Windows"
+
+if IS_WINDOWS:
+    import msvcrt
+else:
+    import termios
+    import tty
+    import select
 
 # 配置日志记录器
 logger = logging.getLogger(__name__)
@@ -39,7 +47,36 @@ def start_keyboard_listener(action_manager, g1_client):
 def _monitor_terminal_input(action_manager, g1_client):
     """
     监听标准输入流 (stdin) 的空格键
+    支持 Windows (msvcrt) 和 Linux (termios)
     """
+    if IS_WINDOWS:
+        _monitor_windows(action_manager, g1_client)
+    else:
+        _monitor_linux(action_manager, g1_client)
+
+def _monitor_windows(action_manager, g1_client):
+    """Windows 平台监听逻辑"""
+    try:
+        while True:
+            # kbhit() 检测是否有按键按下
+            if msvcrt.kbhit():
+                # getch() 读取一个字符（字节）
+                key = msvcrt.getch()
+                try:
+                    char_key = key.decode('utf-8')
+                except:
+                    continue
+                
+                if char_key == ' ':
+                    _trigger_emergency_stop(action_manager, g1_client)
+            else:
+                import time
+                time.sleep(0.1)
+    except Exception as e:
+        logger.error(f"[EmergencyStop] Windows 监听异常: {e}")
+
+def _monitor_linux(action_manager, g1_client):
+    """Linux 平台监听逻辑"""
     # 获取标准输入的文件描述符
     fd = sys.stdin.fileno()
     
@@ -60,7 +97,7 @@ def _monitor_terminal_input(action_manager, g1_client):
                     _trigger_emergency_stop(action_manager, g1_client)
                     
     except Exception as e:
-        logger.error(f"[EmergencyStop] 监听异常: {e}")
+        logger.error(f"[EmergencyStop] Linux 监听异常: {e}")
     finally:
         # 非常重要：程序结束前必须恢复终端设置，否则终端会乱码
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)

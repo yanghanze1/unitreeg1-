@@ -682,6 +682,46 @@ class MyCallback(OmniRealtimeCallback):
         # 3) 立即退出 responding，允许继续对话
         self._force_exit_response_mode(reason="interrupted_by_user")
 
+    def _execute_tool_command(self, transcript: str):
+        """执行工具调用逻辑 (Function Calling)"""
+        # 检查功能开关
+        if not FUNCTION_CALLING_CONFIG.get("ENABLED", True):
+            return
+
+        try:
+            # 调用 Qwen API
+            logger.info(f"[G1-Tool] 开始处理指令: {transcript}")
+            tool_calls = call_qwen_for_tool_use(transcript, ROBOT_TOOLS)
+            
+            if tool_calls:
+                for tool_call in tool_calls:
+                    result = execute_tool_call(
+                        tool_name=tool_call["name"],
+                        params=tool_call["arguments"],
+                        action_manager=self.action_manager,
+                        g1_client=g1
+                    )
+                    if result["status"] == "success":
+                        logger.info(f"[G1] 工具调用成功: {result['message']}")
+                    elif result["status"] == "success_with_warning":
+                        logger.warning(f"[G1] 工具调用成功（有警告）: {result['message']} | {result.get('warning', '')}")
+                    else:
+                        logger.error(f"[G1] 工具调用失败: {result['message']}")
+                
+                # 语音确认
+                with contextlib.suppress(Exception):
+                    self.conversation.create_response(
+                        instructions=(
+                            f"用户下达了动作指令：{transcript}。"
+                            "请用一句简短中文确认你已执行，不要解释原理。"
+                        )
+                    )
+            else:
+                logger.debug(f"[G1] 未生成工具调用: {transcript}")
+
+        except Exception as e:
+            logger.error(f"[G1] 工具执行异常: {e}")
+
     def on_event(self, message) -> None:
         resp = self._ensure_dict(message)
         etype = resp.get("type", "")
@@ -727,7 +767,9 @@ class MyCallback(OmniRealtimeCallback):
                     # 安全修复：如果包含停止意图，立即停止机器人运动
                     # 检查 "停"、"急停"、"别动"、"站住"
                     stop_keywords = ["停", "急停", "别动", "站住"]
-                    if any(x in transcript for x in stop_keywords):
+                    is_stop = any(x in transcript for x in stop_keywords)
+                    
+                    if is_stop:
                          logger.warning(
                              f"[Safety] 检测到打断指令包含停止意图: {transcript}，"
                              "强制停止运动"
@@ -742,6 +784,15 @@ class MyCallback(OmniRealtimeCallback):
                              else:
                                  self.action_manager.set_idle()
                                  logger.info("[Safety] 触发 ActionManager.set_idle()")
+                    
+                    # 修复：如果是复杂指令且不是纯粹的停止，执行工具调用
+                    if is_complex_cmd and not is_stop:
+                        logger.info(f"[G1-Interrupt] 这是一个复杂动作指令，启动执行线程: {transcript}")
+                        threading.Thread(
+                            target=self._execute_tool_command, 
+                            args=(transcript,), 
+                            daemon=True
+                        ).start()
                 else:
                     # 非打断命令：只打印（可按需关闭）
                     print(f"[ASR-IGNORED] {transcript}")
@@ -784,37 +835,8 @@ class MyCallback(OmniRealtimeCallback):
                         logger.info(
                             f"[G1] 检测到复杂指令，跳过关键词匹配: {transcript}"
                         )
-                        # 直接使用 Function Calling
-                        if FUNCTION_CALLING_CONFIG.get("ENABLED", True):
-                            tool_calls = call_qwen_for_tool_use(transcript, ROBOT_TOOLS)
-                            if tool_calls:
-                                for tool_call in tool_calls:
-                                    result = execute_tool_call(
-                                        tool_name=tool_call["name"],
-                                        params=tool_call["arguments"],
-                                        action_manager=self.action_manager,
-                                        g1_client=g1
-                                    )
-                                    if result["status"] == "success":
-                                        logger.info(
-                                            f"[G1] 工具调用成功: {result['message']}"
-                                        )
-                                    elif result["status"] == "success_with_warning":
-                                        logger.warning(
-                                            f"[G1] 工具调用成功（有警告）: "
-                                            f"{result['message']} | {result.get('warning', '')}"
-                                        )
-                                    else:
-                                        logger.error(
-                                            f"[G1] 工具调用失败: {result['message']}"
-                                        )
-                                with contextlib.suppress(Exception):
-                                    self.conversation.create_response(
-                                        instructions=(
-                                            f"用户下达了动作指令：{transcript}。"
-                                            "请用一句简短中文确认你已执行，不要解释原理。"
-                                        )
-                                    )
+                        # 直接使用 Function Calling (复用方法)
+                        self._execute_tool_command(transcript)
                         return
                     
                     # 步骤1: 简单指令使用本地关键词匹配（快速路径）
@@ -831,46 +853,7 @@ class MyCallback(OmniRealtimeCallback):
                         return  # 提前返回，不再执行工具调用
                     
                     # 步骤2: 关键词未匹配，尝试调用 LLM 工具推理
-                    if FUNCTION_CALLING_CONFIG.get("ENABLED", True):  # 检查是否启用Function Calling
-                        tool_calls = call_qwen_for_tool_use(transcript, ROBOT_TOOLS)  # 调用Qwen API进行工具推理
-                        
-                        if tool_calls:  # 如果LLM返回了工具调用
-                            for tool_call in tool_calls:  # 遍历所有工具调用
-                                # 执行工具调用
-                                result = execute_tool_call(
-                                    tool_name=tool_call["name"],  # 工具名称
-                                    params=tool_call["arguments"],  # 工具参数
-                                    action_manager=self.action_manager,  # ActionManager实例
-                                    g1_client=g1  # G1客户端实例
-                                )
-                                
-                                # 记录执行结果
-                                if result["status"] == "success":  # 执行成功
-                                    logger.info(
-                                        f"[G1] 工具调用成功: {result['message']}"
-                                    )
-                                elif result["status"] == "success_with_warning":  # 成功但有警告
-                                    logger.warning(
-                                        f"[G1] 工具调用成功（有警告）: "
-                                        f"{result['message']} | {result.get('warning', '')}"
-                                    )  # 记录警告
-                                else:  # 执行失败
-                                    logger.error(
-                                        f"[G1] 工具调用失败: {result['message']}"
-                                    )  # 记录错误
-                            
-                            # 生成确认响应
-                            with contextlib.suppress(Exception):  # 捕获并忽略异常
-                                self.conversation.create_response(
-                                    instructions=(
-                                        f"用户下达了动作指令：{transcript}。"
-                                        "请用一句简短中文确认你已执行，不要解释原理。"
-                                    )
-                                )  # 生成确认响应
-                        else:  # LLM未返回工具调用（非控制指令）
-                            logger.debug(
-                                f"[G1] 非控制指令，跳过: {transcript}"
-                            )  # 记录调试信息
+                    self._execute_tool_command(transcript)
                     
                 except Exception as e:  # 捕获所有异常
                     logger.error(f"[G1] 执行失败：{e}")  # 记录错误
