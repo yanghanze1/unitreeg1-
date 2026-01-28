@@ -174,7 +174,8 @@ def execute_tool_call(
     tool_name: str, 
     params: Dict[str, Any], 
     action_manager: ActionManager, 
-    g1_client: Any
+    g1_client: Any,
+    g1_arm_client: Any = None
 ) -> Dict[str, Any]:
     """
     执行单个工具调用
@@ -184,6 +185,7 @@ def execute_tool_call(
         params: 工具参数字典
         action_manager: ActionManager 实例
         g1_client: G1 客户端实例 (当前未使用，预留扩展)
+        g1_arm_client: G1 手臂动作客户端实例 (用于挥手等动作)
         
     Returns:
         执行结果字典 {"status": "success/error", "message": "...", "data": {...}}
@@ -217,6 +219,9 @@ def execute_tool_call(
         
         elif tool_name == "emergency_stop":  # 紧急停止工具
             return _execute_emergency_stop(action_manager)  # 调用紧急停止函数
+        
+        elif tool_name == "wave_hand":  # 挥手动作
+            return _execute_wave_hand(g1_arm_client)
         
         else:  # 未知工具名称
             error_msg = f"未知工具: {tool_name}"  # 错误信息
@@ -371,3 +376,34 @@ def _execute_emergency_stop(action_manager: ActionManager) -> Dict[str, Any]:
         logger.warning(f"[Bridge] {result['message']}")  # 记录执行结果（使用warning级别强调）
     
     return result  # 返回执行结果
+
+
+def _execute_wave_hand(g1_arm_client: Any) -> Dict[str, Any]:
+    """执行挥手动作指令"""
+    # 检查 g1_arm_client 是否可用
+    if not g1_arm_client:  # 检查 g1_arm_client 是否为 None
+        error_msg = "G1 手臂动作客户端未初始化"  # 错误信息
+        logger.error(f"[Bridge] {error_msg}")  # 记录错误日志
+        return {"status": "error", "message": error_msg}  # 返回错误结果
+    
+    try:
+        # 调用 SDK 挥手接口 (face wave = 25)
+        g1_arm_client.ExecuteAction(25)
+        
+        # 构建返回结果
+        result = {
+            "status": "success",  # 状态：成功
+            "message": "挥手动作已执行",  # 执行信息
+            "data": {"action": "wave_hand", "type": "face_wave"}  # 动作详情
+        }
+        
+        if LOGGING_CONFIG["LOG_EXECUTION_RESULTS"]:  # 如果启用执行结果日志
+            logger.info(f"[Bridge] {result['message']}")  # 记录执行结果
+        
+        return result  # 返回执行结果
+    
+    except Exception as e:  # 捕获所有异常
+        error_msg = f"挥手动作执行失败: {str(e)}"  # 错误信息
+        logger.error(f"[Bridge] {error_msg}", exc_info=True)  # 记录异常日志（包含堆栈）
+        return {"status": "error", "message": error_msg}  # 返回错误结果
+

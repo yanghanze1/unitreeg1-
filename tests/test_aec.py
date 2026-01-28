@@ -30,7 +30,7 @@ def test_aec_processor_initialization():
     try:
         from aec_processor import AECProcessor, SPEEXDSP_AVAILABLE  # 导入AEC模块
         
-        if not SPEEX DSP_AVAILABLE:  # 库不可用
+        if not SPEEXDSP_AVAILABLE:  # 库不可用
             pytest.skip("speexdsp 库不可用，跳过测试")  # 跳过测试
         
         # 创建 AEC 处理器

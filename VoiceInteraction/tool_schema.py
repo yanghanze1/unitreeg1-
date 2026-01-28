@@ -92,6 +92,21 @@ TOOL_EMERGENCY_STOP = {
 }
 
 
+# ===================== 交互动作工具 =====================
+
+TOOL_WAVE_HAND = {
+    "type": "function",  # 工具类型
+    "function": {
+        "name": "wave_hand",  # 工具名称
+        "description": "让机器人挥手打招呼。用于友好互动场景。",  # 工具描述
+        "parameters": {  # 参数定义
+            "type": "object",
+            "properties": {},  # 无参数（默认左手挥手）
+        }
+    }
+}
+
+
 # ===================== 工具列表（注册到 LLM）=====================
 
 ROBOT_TOOLS = [
@@ -99,6 +114,7 @@ ROBOT_TOOLS = [
     TOOL_STOP_ROBOT,      # 停止机器人
     TOOL_ROTATE_ANGLE,    # 旋转指定角度
     TOOL_EMERGENCY_STOP,  # 紧急停止
+    TOOL_WAVE_HAND,       # 挥手打招呼
 ]
 
 
@@ -109,4 +125,5 @@ TOOL_NAME_CN = {
     "stop_robot": "停止运动",
     "rotate_angle": "旋转角度",
     "emergency_stop": "紧急停止",
+    "wave_hand": "挥手动作",
 }

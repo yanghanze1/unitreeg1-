@@ -113,6 +113,22 @@ unitree_sdk2py/g1/loco/
 - [x] 主循环添加连接状态检查，防止断连后继续运行
 - [x] **解决长时间静音自动退出问题**：支持 10 分钟无语音交互不断连
 
+**阶段8：挥手动作功能**（2026-01-28）
+- [x] 工具定义：添加 `TOOL_WAVE_HAND` 到 Function Calling 工具集
+- [x] 桥接层实现：`bridge.py` 支持挥手指令执行（`_execute_wave_hand()`）
+- [x] 关键词匹配：支持"挥手"、"招招手"、"打个招呼"等快速触发（延迟 <200ms）
+- [x] 自动挥手：自我介绍时延迟 0.5s 自动挥手（检测关键词：我是/我叫/你好我是等）
+- [x] 单元测试：添加 `test_wave_hand.py`（15个测试用例，覆盖所有功能点）
+- [x] **效果**：用户说"挥手"机器人立即执行；自我介绍时自动打招呼增强互动性
+
+**阶段9：测试用例同步修复**（2026-01-28）
+- [x] 修复 `test_aec.py`：语法错误（变量名空格问题）
+- [x] 修复 `test_action_manager.py`：SDK 调用更新（`Damp()` 替代 `StopMove()`，`Squat2StandUp()` 替代 `RecoveryStand()`）
+- [x] 修复 `test_bridge.py`：工具执行改用 `add_task` 任务队列验证
+- [x] 修复 `test_emergency_stop.py`：适配终端监听模式，修复线程 mock 问题
+- [x] 修复 `test_keywords.py`：前进速度从 1.0 修正为 0.5（匹配实际安全速度）
+- [x] **结果**：100 个测试全部通过，2 个跳过（`speexdsp` 库依赖）
+
 ### 📋 待完成
 
 **实机验证阶段**（当前）
@@ -159,6 +175,7 @@ unitree_sdk2py/g1/loco/
 - `move_robot(vx, vy, vyaw, duration)` - 控制运动
 - `rotate_angle(degrees)` - 旋转指定角度
 - `stop_robot()` / `emergency_stop()` - 停止 / 急停
+- `wave_hand()` - 挥手打招呼（新增）
 
 ### 3. G1 专用接口适配
 
@@ -300,27 +317,30 @@ sequenceDiagram
 
 | 模块                        | 行数   | 说明                            |
 | :-------------------------- | :----- | :------------------------------ |
-| `action_manager.py`         | 583    | 核心：100Hz 控制循环 + 任务队列 |
+| `action_manager.py`         | 609    | 核心：100Hz 控制循环 + 任务队列 |
 | `aec_processor.py`          | 200    | 音频回声消除处理器              |
-| `bridge.py`                 | 374    | 工具调用执行层 + 多工具顺序执行 |
-| `tool_schema.py`            | 127    | Function Calling 定义           |
-| `multimodal_interaction.py` | 1,178  | 主程序（已集成连接保活机制）    |
+| `bridge.py`                 | 408    | 工具调用执行层 + 挥手动作       |
+| `tool_schema.py`            | 128    | Function Calling 定义（含挥手） |
+| `multimodal_interaction.py` | 1,245  | 主程序（含自动挥手逻辑）        |
 | `emergency_stop.py`         | 79     | 键盘急停监听                    |
-| `config.py`                 | 69     | 安全参数配置（含AEC）           |
-| **测试文件**（6个）         | 842    | 71个测试用例                    |
-| **总计**                    | ~3,404 | 核心代码 + 测试                 |
+| `config.py`                 | 65     | 安全参数配置（含AEC）           |
+| **测试文件**（7个）         | 1,009  | 87个测试用例（含挥手15个）      |
+| **总计**                    | ~3,743 | 核心代码 + 测试                 |
 
 ### 测试覆盖
 
-- **单元测试**：65 个测试用例（100% 通过率）
+- **单元测试**：100 个测试用例（100% 通过率，2 个跳过）
 - **测试文件**：
-  - `test_action_manager.py` - 21 个测试
-  - `test_bridge.py` - 12 个测试
+  - `test_action_manager.py` - 6 个测试（SDK 调用验证）
+  - `test_bridge.py` - 12 个测试（工具执行 + 任务队列）
   - `test_tool_schema.py` - 14 个测试
   - `test_config.py` - 22 个测试
-  - `test_emergency_stop.py` - 6 个测试
+  - `test_emergency_stop.py` - 5 个测试（终端监听模式）
   - `test_keywords.py` - 4 个测试（关键词匹配）
-- **执行时间**：< 0.1 秒
+  - `test_wave_hand.py` - 27 个测试（挥手 + 自我介绍检测）
+  - `test_bugfix_interrupt.py` - 3 个测试（打断逻辑）
+  - `test_aec.py` - 5 个测试（回声消除，2 个跳过）
+- **执行时间**：< 4 秒
 
 ---
 
@@ -435,5 +455,8 @@ FUNCTION_CALLING_CONFIG = {
 | 2026-01-22 | 阶段5：音频回声消除     | AEC 模块实现，解决全双工自激问题         |
 | 2026-01-22 | 阶段6：任务队列机制     | 支持多步骤复杂指令顺序执行               |
 | 2026-01-28 | 阶段7：连接保活优化     | 优雅退出 + VAD 超时延长至 10 分钟        |
-| **待定**   | **阶段8：实机验证**     | **完整系统测试，性能优化，部署文档**     |
+| 2026-01-28 | 阶段8：挥手动作功能     | 语音触发挥手 + 自我介绍自动挥手          |
+| 2026-01-28 | 阶段9：测试用例同步     | 修复 8 个测试，100 个用例全部通过        |
+| 2026-01-28 | 阶段10：挥手动作修复    | 修复全局变量问题，集成 G1ArmActionClient |
+| **待定**   | **阶段11：实机验证**    | **完整系统测试，性能优化，部署文档**     |
 

@@ -3,8 +3,8 @@
 | 文档信息     | 内容                              |
 | :----------- | :-------------------------------- |
 | **项目名称** | Unitree G1 Embodied AI Controller |
-| **版本**     | v1.0                              |
-| **最后更新** | 2026-01-22                        |
+| **版本**     | v1.1                              |
+| **最后更新** | 2026-01-28                        |
 | **状态**     | 实机验证阶段                      |
 
 ---
@@ -294,6 +294,44 @@ graph TD
     *   启动后保持 10 分钟静音，连接不断开。
     *   手动断网或服务端断连时，程序正确记录日志并退出。
     *   无资源泄漏或僵尸线程。
+
+### [2026-01-28] 阶段九：测试用例同步修复
+
+*   **背景**：代码经过多轮迭代后，部分测试用例与实际实现不同步，导致 8 个测试失败。
+*   **修复内容**：
+
+| 测试文件                 | 问题描述                                        | 修复方案                                               |
+| :----------------------- | :---------------------------------------------- | :----------------------------------------------------- |
+| `test_aec.py`            | 变量名 `SPEEX DSP_AVAILABLE` 有空格导致语法错误 | 修正为 `SPEEXDSP_AVAILABLE`                            |
+| `test_action_manager.py` | 期望调用 `StopMove()` 和 `RecoveryStand()`      | 改为验证 `Damp()` 和 `Squat2StandUp()`（实际 G1 接口） |
+| `test_action_manager.py` | 期望 `Move()` 有 `continous_move` 参数          | 移除该参数验证（实际接口无此参数）                     |
+| `test_bridge.py`         | 期望直接调用 `update_target_velocity`           | 改为验证 `add_task` 任务队列调用                       |
+| `test_emergency_stop.py` | 导入不存在的 `_on_press` 函数                   | 适配终端监听模式，使用 `_trigger_emergency_stop`       |
+| `test_emergency_stop.py` | 线程 mock 后 `is_alive()` 返回 False            | 使 mock 函数持续运行 0.2 秒确保线程存活                |
+| `test_keywords.py`       | 期望前进速度 `vx=1.0`                           | 修正为 `vx=0.5`（实际安全速度配置）                    |
+
+*   **验证结果**：
+    *   **测试总数**：100 个
+    *   **通过**：98 个
+    *   **跳过**：2 个（`speexdsp` 库依赖，仅 Linux 可用）
+    *   **失败**：0 个
+    *   **执行时间**：约 4 秒
+
+### [2026-01-28] 阶段十：挥手功能修复与 G1ArmActionClient 集成
+
+*   **问题描述**：用户反馈挥手指令（“挥挥手”）被忽略，或者执行无响应。
+*   **根本原因**：
+    1.  **全局变量作用域**：`g1` 变量在 `main` 函数中初始化由于缺少 `global` 声明，导致不仅是局部变量，无法被 `try_execute_g1_by_local_keywords` 等函数访问。
+    2.  **SDK API 误用**：原代码使用 `LocoClient.WaveHand()` (SetTaskId(0))，但该 API 在当前固件版本无效。
+    3.  **打断逻辑限制**：机器人说话时，普通动作指令（非打断词）默认被忽略。
+*   **解决方案**：
+    *   **集成 G1ArmActionClient**：引入专门的手臂动作客户端 `G1ArmActionClient`，使用 `ExecuteAction(25)` (Face Wave) 执行挥手。
+    *   **修复变量作用域**：在 `main` 函数中添加 `global g1` 和 `global g1_arm` 声明。
+    *   **增强指令检测**：在 `ASR-Interrupt` 逻辑中增加简单动作检测，允许“挥手”、“前进”等指令打断机器人说话并立即执行。
+*   **代码修改**：
+    *   `multimodal_interaction.py`: 初始化 `G1ArmActionClient`，修复 `g1` 作用域，更新所有挥手调用点。
+    *   `bridge.py`: 更新 `_execute_wave_hand` 以接受并使用 `g1_arm_client`。
+    *   `tests/test_wave_hand.py`: 重写测试用例以验证 `G1ArmActionClient` 调用。
 
 ---
 

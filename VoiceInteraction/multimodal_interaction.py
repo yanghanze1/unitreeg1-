@@ -142,6 +142,7 @@ except Exception as _e:
     UNITREE_AVAILABLE = False  # 标记SDK不可用
 
 g1 = None  # 全局G1客户端实例（LocoClient）
+g1_arm = None  # 全局G1手臂动作客户端实例（G1ArmActionClient）
 action_manager = None  # 全局ActionManager实例（守护线程）
 
 
@@ -242,6 +243,20 @@ def try_execute_g1_by_local_keywords(text: str, action_manager: ActionManager) -
         action_manager.emergency_stop()
         return True
     
+    # 挥手关键词检测（新增）
+    if any(kw in t for kw in ["挥手", "招招手", "打个招呼", "挥挥手", "招手"]):
+        logger.info(f"[Local] 检测到挥手指令: {t}")  # 记录检测到挥手指令
+        if g1_arm:  # 检查 g1_arm 手臂动作客户端是否可用
+            try:
+                # 使用 G1ArmActionClient 执行挥手动作（face wave = 25, high wave = 26）
+                g1_arm.ExecuteAction(25)  # 调用SDK执行face wave动作
+                logger.info("[Local] 挥手动作执行成功（face wave）")  # 记录成功日志
+            except Exception as e:  # 捕获执行异常
+                logger.error(f"[Local] 挥手动作执行失败: {e}")  # 记录错误日志
+        else:
+            logger.warning("[Local] g1_arm 客户端未初始化，无法执行挥手")  # 记录警告
+        return True
+    
     # 把 "向前", "往前", "走" 都算作前进
     if "前进" in t or "向前" in t or "往前" in t:
         # 默认给个稍微慢点的速度
@@ -293,6 +308,32 @@ def is_interrupt_command(transcript: str) -> bool:
         return True
 
     return False
+
+
+def _detect_self_introduction(text: str) -> bool:
+    """
+    检测文本是否为自我介绍
+    
+    Args:
+        text: LLM 输出的文本内容
+        
+    Returns:
+        bool: 是否为自我介绍
+    """
+    if not text:  # 检查文本是否为空
+        return False  # 空文本不是自我介绍
+    
+    t = text.strip()  # 去除文本两端空白字符
+    
+    # 自我介绍关键词列表
+    intro_keywords = [
+        "我是", "我的名字", "我叫", "你好我是", 
+        "大家好我是", "你可以叫我", "我的名字叫",
+        "让我介绍一下", "我来介绍", "自我介绍"
+    ]
+    
+    # 检查是否包含任何自我介绍关键词
+    return any(kw in t for kw in intro_keywords)
 
 
 # ========= 音频播放器（Base64 PCM -> PyAudio，带 idle 判定 + interrupt）=========
@@ -702,7 +743,8 @@ class MyCallback(OmniRealtimeCallback):
                         tool_name=tool_call["name"],
                         params=tool_call["arguments"],
                         action_manager=self.action_manager,
-                        g1_client=g1
+                        g1_client=g1,
+                        g1_arm_client=g1_arm
                     )
                     if result["status"] == "success":
                         logger.info(f"[G1] 工具调用成功: {result['message']}")
@@ -726,8 +768,31 @@ class MyCallback(OmniRealtimeCallback):
             logger.error(f"[G1] 工具执行异常: {e}")
 
     def on_event(self, message) -> None:
-        resp = self._ensure_dict(message)
-        etype = resp.get("type", "")
+        resp = self._ensure_dict(message)  # 转换为字典格式
+        etype = resp.get("type", "")  # 获取消息类型
+        
+        # ========= 新增：自我介绍检测与自动挥手 =========
+        if etype == "response.audio_transcript.delta":  # 音频转写文本增量
+            delta_text = resp.get("delta", "")  # 获取文本增量
+            if delta_text and _detect_self_introduction(delta_text):  # 检测是否为自我介绍
+                logger.info(f"[Callback] 检测到自我介绍关键词：{delta_text[:50]}...")  # 记录检测日志（截取前50字符）
+                
+                # 延迟 0.5 秒后执行挥手（与语音播放同步）
+                def delayed_wave():
+                    time.sleep(0.5)  # 延迟 0.5 秒
+                    if g1_arm:  # 检查 g1_arm 手臂动作客户端是否可用
+                        try:
+                            # 使用 G1ArmActionClient 执行挥手动作（face wave = 25）
+                            g1_arm.ExecuteAction(25)  # 调用SDK执行face wave动作
+                            logger.info("[Callback] 自我介绍自动挥手执行成功")  # 记录成功日志
+                        except Exception as e:  # 捕获执行异常
+                            logger.error(f"[Callback] 自我介绍自动挥手失败: {e}")  # 记录错误日志
+                    else:
+                        logger.warning("[Callback] g1_arm 客户端未初始化，自动挥手跳过")
+                
+                # 在独立线程中执行，不阻塞音频播放
+                wave_thread = threading.Thread(target=delayed_wave, daemon=True)  # 创建守护线程
+                wave_thread.start()  # 启动线程
 
         if etype == "session.created":
             sid = (resp.get("session") or {}).get("id", "")
@@ -1154,6 +1219,13 @@ if __name__ == "__main__":
                 g1 = LocoClient() 
                 g1.SetTimeout(10.0)
                 g1.Init()
+                
+                print("[G1] 正在实例化 G1ArmActionClient...")
+                from unitree_sdk2py.g1.arm.g1_arm_action_client import G1ArmActionClient
+                g1_arm = G1ArmActionClient()
+                g1_arm.SetTimeout(10.0)
+                g1_arm.Init()
+                
                 print("[G1] 客户端实例化成功！")
                 
                 # === 修改重点：直接接管控制 ===
