@@ -562,6 +562,9 @@ class MyCallback(OmniRealtimeCallback):
         # 冷却时间：机器人说完话后的一小段时间内忽略 ASR（防止回声自激）
         self._cool_lock = threading.Lock()
         self._last_speak_end_time = 0.0
+        
+        # 连接状态标志：用于检测连接是否断开
+        self._connection_alive = True  # WebSocket连接活跃状态
 
     def _inc_seq(self) -> int:
         with self._seq_lock:
@@ -637,8 +640,8 @@ class MyCallback(OmniRealtimeCallback):
 
     def on_close(self, close_status_code, close_msg) -> None:
         logger.info(f"[Omni] connection closed: code={close_status_code}, msg={close_msg}")
-        self._cleanup()
-        os._exit(0)
+        self._cleanup()  # 清理资源
+        self._connection_alive = False  # 标记连接已断开，触发主循环退出
 
     def _cleanup(self):
         with contextlib.suppress(Exception):
@@ -998,23 +1001,22 @@ def main():
     conversation.connect()  # 建立WebSocket连接
 
     instructions = (
-        "你叫来福，是来自漳州龙文博科的机器人。"
+        "你叫来福，是来自厦门博智科技的机器人。"
         "你是一个实体机器人，拥有控制自己移动的能力。"
-        "我们在漳州龙文博科具身智能科技有限公司的展厅。"
+        "我们在厦门火炬滴灌科创基金首批投资项目签约仪式暨项目路演现场。非常期待和各位专家会后进行更深一步的交流。"
         "用户下达移动指令（如前进、后退、转弯、走几米）时，**必须**调用工具 `move_robot` 或 `rotate_robot` 来执行。"
         "**严禁**在不调用工具的情况下，仅通过文字回复说'正在移动'。"
         "如果调用了工具，请只回复一句简短的确认，如'收到，执行中'。"
         
         # --- 修改重点：把“当是要你...”改成“只有当用户问你...” ---
-        "如果用户明确问你是谁、或者让你介绍自己时，你才回答：'我是来自漳州龙文博科的机器人来福，有什么问题大家可以问我！'"
+        "如果用户明确问你是谁、或者让你介绍自己时，你才回答：'您好，我是来自厦门博智科技的机器人来福，有什么问题大家可以问我！'"
         "如果用户只是简单的打招呼（如说'你好'），你只需要简短回复：'你好！'或'我在，请说。'，千万不要长篇大论介绍自己。"
         "如果用户直接问具体问题（如'今天天气怎么样'），直接回答问题，不要自我介绍。"
-        # -----------------------------------------------------
-
-        "当介绍陈龙彪博士时，请回答：陈龙彪博士，厦门大学信息学院副教授、博导..." 
-        "当问你还有什么其它技能时，请回答：除了和大家打招呼、互动，我在公司还能针对封闭园区进行自主导航训练..." 
-        
-        "用中文回答问题，回答问题基于事实要准确，语气正式，每次回答不超过80个字。"
+        "如果用户让你介绍博智科技，请完整回答：厦门博智科技由留法博士团队于2019年创立，专注于具身智能、群体智能和垂直领域大模型的产业化应用，致力于将人工智能深度融入物理实体，如机器人和机器狗等，赋予其感知、学习和与环境动态交互的能力。目前是国家高新技术企业、厦门市重点上市后备企业等。"
+        "当介绍陈龙彪博士时，请完整回答：陈龙彪博士，厦门大学信息学院副教授、博导，国家级海外高层次人才、福建省高层次人才A类、厦门市双百人才。主要研究方向是：群体智能、具身智能、人工智能等。" 
+        "当问你还有什么其它技能时，请完整回答：除了和大家打招呼、互动，我在公司还能针对封闭园区进行自主导航训练，为来访的客人提供引导服务，保证大家能顺利找到目的地。而且，我们团队还会针对不同行业，为我训练特定的语料库，像金融知识、法律常识等领域的内容我都有所涉猎，能为不同行业的用户提供专业的信息咨询服务。" 
+        # ---------------------
+        "用中文回答问题，回答问题基于事实要准确，语气正式，每次回答不超过200个字。"
     )
 
     conversation.update_session(
@@ -1026,6 +1028,11 @@ def main():
         input_audio_transcription_model="gummy-realtime-v1",
         enable_turn_detection=True,  
         turn_detection_type="server_vad",
+        turn_detection_config={  # 配置VAD参数防止长时间静音断连
+            "silence_duration_ms": 600000,  # 静音超时时间设为10分钟(600秒)
+            "prefix_padding_ms": 300,  # 保留前缓冲300ms
+            "threshold": 0.5  # VAD检测阈值
+        },
         instructions=instructions,
     )
 
@@ -1080,9 +1087,14 @@ def main():
         aec_processor = None  # 禁用 AEC
 
     while True:
-        if not callback.mic_stream:
-            time.sleep(0.05)
-            continue
+        # 检查连接状态，如果已断开则退出主循环
+        if not callback._connection_alive:  # 检查WebSocket连接是否断开
+            logger.warning("[System] WebSocket 连接已断开，程序退出")  # 记录连接断开事件
+            break  # 退出主循环
+        
+        if not callback.mic_stream:  # 检查麦克风流是否就绪
+            time.sleep(0.05)  # 等待麦克风初始化
+            continue  # 继续下一次循环
 
         # 始终 read
         audio_data = callback.mic_stream.read(MIC_CHUNK_FRAMES, exception_on_overflow=False)
