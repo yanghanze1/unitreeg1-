@@ -163,6 +163,67 @@ graph TD
     *   Linux 系统需先安装 `libspeexdsp-dev`。
     *   安装 Python 依赖：`pip install speexdsp-python scipy`。
 
+### 3.5 连接保活与优雅退出机制
+
+**背景**：
+在原始实现中，当用户长时间不说话时，DashScope 服务端会因 VAD（语音活动检测）判定对话结束而主动关闭 WebSocket 连接。此时 `on_close` 回调中的 `os._exit(0)` 会强制杀死整个进程，导致资源无法正确释放。
+
+**问题分析**：
+
+1.  **强制退出隐患**：`os._exit(0)` 跳过所有清理逻辑，可能导致文件句柄泄漏、线程僵死等问题。
+2.  **VAD 超时过短**：默认 `silence_duration_ms` 约 2-3 秒，无法满足长时间待机场景（如展厅演示）。
+3.  **状态不可观测**：主循环无法感知连接已断开，可能进入未定义状态。
+
+**解决方案**：
+
+*   **优雅退出模式（`MyCallback` 修改）**：
+    ```python
+    # 初始化时添加连接状态标志
+    self._connection_alive = True
+    
+    # on_close 修改为设置标志，而非强制退出
+    def on_close(self, close_status_code, close_msg) -> None:
+        logger.info(f"[Omni] connection closed: code={close_status_code}, msg={close_msg}")
+        self._cleanup()  # 清理资源
+        self._connection_alive = False  # 标记连接已断开
+    ```
+
+*   **延长 VAD 静音超时（`main()` 配置修改）**：
+    ```python
+    conversation.update_session(
+        # ... 其他参数 ...
+        enable_turn_detection=True,
+        turn_detection_type="server_vad",
+        turn_detection_config={  # 新增配置
+            "silence_duration_ms": 600000,  # 10分钟（600秒 * 1000ms）
+            "prefix_padding_ms": 300,       # 保留前缓冲300ms
+            "threshold": 0.5                # VAD检测阈值
+        },
+        instructions=instructions,
+    )
+    ```
+
+*   **主循环状态检测**：
+    ```python
+    while True:
+        # 检查连接状态，断开则退出循环
+        if not callback._connection_alive:
+            logger.warning("[System] WebSocket 连接已断开，程序退出")
+            break
+        # ... 原有逻辑 ...
+    ```
+
+**技术细节**：
+
+*   **线程安全性**：`_connection_alive` 仅在初始化（`True`）和 `on_close`（`False`）两处修改，无需加锁（单次赋值原子性）。
+*   **资源清理顺序**：`on_close` → `_cleanup()`（关播放器、麦克风）→ 设置标志 → 主循环退出 → Ctrl+C 处理器最终清理。
+*   **超时时间选择**：10 分钟满足展厅演示需求；实际部署可根据场景调整（如家用场景可设为 30-60 分钟）。
+
+**验证方法**：
+1.  启动程序后保持 10 分钟静音，观察连接是否保持活跃。
+2.  手动触发断连（如网络中断），检查日志是否正确记录 `[System] WebSocket 连接已断开`。
+3.  确认进程正确退出，无僵死线程（`ps aux | grep python`）。
+
 ---
 
 ## 4. 开发日志与里程碑
@@ -215,6 +276,24 @@ graph TD
 *   **测试**：
     *   创建 `tests/test_aec.py` 单元测试文件。
     *   测试覆盖：初始化、处理、重采样、重置等核心功能。
+
+### [2026-01-28] 阶段七：连接保活机制优化
+
+*   **核心突破**：彻底解决长时间静音自动退出问题，支持 10 分钟无语音交互不断连。
+*   **关键实现**：
+    *   **优雅退出**：移除 `on_close` 中的 `os._exit(0)`，改为设置 `_connection_alive = False` 标志。
+    *   **VAD 超时延长**：配置 `turn_detection_config`，将 `silence_duration_ms` 从默认 2-3 秒延长到 600,000 毫秒（10 分钟）。
+    *   **状态检测**：主循环每次迭代检查 `_connection_alive`，连接断开时记录日志并优雅退出。
+    *   **资源管理**：确保播放器、麦克风、线程等资源在断连时正确释放，无进程僵死。
+*   **代码修改位置**：
+    *   `MyCallback.__init__()`: 添加 `_connection_alive` 标志初始化。
+    *   `MyCallback.on_close()`: 替换强制退出为状态标记。
+    *   `main()`: 添加 `turn_detection_config` 配置项。
+    *   主循环（1090-1101 行）: 添加连接状态检查逻辑。
+*   **验收标准**：
+    *   启动后保持 10 分钟静音，连接不断开。
+    *   手动断网或服务端断连时，程序正确记录日志并退出。
+    *   无资源泄漏或僵尸线程。
 
 ---
 
