@@ -202,6 +202,44 @@ class AudioResampler:
         except Exception as e:  # 捕获异常
             logger.error(f"[Resampler] 重采样失败: {e}")  # 记录错误
             return b""  # 返回空数据
+    
+    @staticmethod
+    def resample(data: bytes, src_sr: int, dst_sr: int) -> bytes:
+        """
+        将音频数据从源采样率重采样到目标采样率
+        
+        Args:
+            data: 源采样率的单声道 16-bit PCM 数据
+            src_sr: 源采样率（如 24000）
+            dst_sr: 目标采样率（如 44100）
+        
+        Returns:
+            目标采样率的单声道 16-bit PCM 数据
+        """
+        if not data:  # 空数据直接返回
+            return b""
+        
+        if src_sr == dst_sr:  # 采样率相同，无需重采样
+            return data
+        
+        try:
+            # 转为 numpy array
+            samples_src = np.frombuffer(data, dtype=np.int16)  # 解析为 int16 数组
+            
+            # 计算重采样后的样本数
+            num_samples_dst = int(len(samples_src) * dst_sr / src_sr)  # 计算目标样本数
+            
+            # 执行重采样
+            samples_dst = signal.resample(samples_src, num_samples_dst)  # 重采样
+            
+            # 转回 int16 并转为 bytes
+            samples_dst_int16 = np.clip(samples_dst, -32768, 32767).astype(np.int16)  # 限幅并转换类型
+            
+            return samples_dst_int16.tobytes()  # 返回字节数据
+        
+        except Exception as e:  # 捕获异常
+            logger.error(f"[Resampler] 重采样失败 ({src_sr}→{dst_sr}): {e}")  # 记录错误
+            return b""  # 返回空数据
 
 
 # 导出公共接口

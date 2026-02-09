@@ -40,10 +40,15 @@ class B64PCMPlayer:
             chunk_size_ms: 每个播放块的毫秒数（默认 100ms）
         """
         self.pya = pya  # 保存 PyAudio 实例
-        self.sample_rate = sample_rate  # 保存采样率
+        self.sample_rate = sample_rate  # 原始采样率
         self.chunk_size_bytes = int(chunk_size_ms * sample_rate * 2 // 1000)  # 计算每块字节数
 
         self._stream_lock = threading.Lock()  # 音频流操作锁
+        
+        # 检测设备支持的采样率
+        self._device_sample_rate = self._detect_device_sample_rate()
+        logger.info(f"[Player] 原始采样率: {self.sample_rate}Hz, 设备采样率: {self._device_sample_rate}Hz")
+        
         self.player_stream = self._open_stream()  # 创建输出流
 
         self.raw_audio_buffer: "queue.Queue[bytes]" = queue.Queue()  # 原始音频缓冲区
@@ -64,9 +69,15 @@ class B64PCMPlayer:
         # === AEC 支持：参考信号缓冲区 ===
         self.reference_buffer: "queue.Queue[bytes]" = queue.Queue(maxsize=100)  # 保存播放的参考信号（16kHz）
         self.resampler = None  # 重采样器实例
+        self._playback_resampler = None  # 播放重采样器
         try:
             from aec_processor import AudioResampler  # 导入重采样工具
             self.resampler = AudioResampler()  # 用于 24kHz → 16kHz 重采样
+            # 初始化播放重采样器（如果需要）
+            if self._device_sample_rate != self.sample_rate:
+                from aec_processor import AudioResampler
+                self._playback_resampler = AudioResampler()  # 使用通用的重采样方法
+                logger.info(f"[Player] 启用播放重采样: {self.sample_rate}Hz → {self._device_sample_rate}Hz")
         except ImportError:
             logger.warning("[Player] AEC 模块未找到，参考信号功能禁用")  # 打印警告
 
@@ -76,14 +87,37 @@ class B64PCMPlayer:
         self._decoder_thread.start()  # 启动解码线程
         self._player_thread.start()  # 启动播放线程
 
+    def _detect_device_sample_rate(self):
+        """检测默认输出设备支持的采样率"""
+        try:
+            default_output = self.pya.get_default_output_device_info()
+            device_rate = default_output['defaultSampleRate']
+            device_rate = int(float(device_rate))
+            logger.info(f"[Player] 默认输出设备: {default_output['name']}, 支持采样率: {device_rate}Hz")
+            return device_rate
+        except Exception as e:
+            logger.warning(f"[Player] 无法检测设备采样率，使用默认 24000Hz: {e}")
+            return self.sample_rate
+
     def _open_stream(self):
-        """创建并返回 PyAudio 输出流"""
-        return self.pya.open(
-            format=pyaudio.paInt16,  # 16位 PCM 格式
-            channels=1,  # 单声道
-            rate=self.sample_rate,  # 采样率 24kHz
-            output=True  # 输出流
-        )
+        """创建并返回 PyAudio 输出流（使用设备支持的采样率）"""
+        try:
+            return self.pya.open(
+                format=pyaudio.paInt16,  # 16位 PCM 格式
+                channels=1,  # 单声道
+                rate=self._device_sample_rate,  # 使用设备支持的采样率
+                output=True  # 输出流
+            )
+        except OSError as e:
+            logger.error(f"[Player] 无法使用 {self._device_sample_rate}Hz 打开音频流: {e}")
+            logger.info("[Player] 尝试使用 44100Hz 作为备选采样率")
+            self._device_sample_rate = 44100
+            return self.pya.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=44100,
+                output=True
+            )
 
     def _set_not_idle(self):
         """设置为非空闲状态"""
@@ -240,12 +274,21 @@ class B64PCMPlayer:
                 except Exception:  # 捕获异常
                     pass  # 重采样失败不影响播放
 
+            # === 重采样到设备支持的采样率 ===
+            chunk_to_play = chunk  # 默认使用原始数据
+            if self._device_sample_rate != self.sample_rate and self._playback_resampler is not None:
+                try:
+                    chunk_to_play = self._playback_resampler.resample(chunk, self.sample_rate, self._device_sample_rate)
+                except Exception:  # 如果重采样失败，使用原始数据
+                    chunk_to_play = chunk
+
             try:
                 # 把一次 chunk 再拆成更小片，避免 write 阻塞太久
-                for i in range(0, len(chunk), sub_bytes):  # 按子块大小遍历
+                sub_bytes = int(40 * self._device_sample_rate * 2 // 1000)  # 40ms 音频数据长度（使用设备采样率）
+                for i in range(0, len(chunk_to_play), sub_bytes):  # 按子块大小遍历
                     if self._abort_event.is_set():  # 检查是否被打断
                         break  # 退出循环
-                    sub = chunk[i:i + sub_bytes]  # 提取子块
+                    sub = chunk_to_play[i:i + sub_bytes]  # 提取子块
                     if not sub:  # 如果子块为空
                         continue  # 跳过
                     with self._stream_lock:  # 获取流操作锁
