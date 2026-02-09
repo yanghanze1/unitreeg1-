@@ -5,10 +5,11 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=unitree
-Group=unitree
+User=root
+Group=root
 WorkingDirectory=/home/unitree/bk-main
 ExecStart=/usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py
+ExecStartPre=/bin/bash -c 'sleep 5 && /home/unitree/bk-main/scripts/setup_audio.sh'
 Restart=on-failure
 RestartSec=10
 
@@ -17,9 +18,13 @@ PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/home/unitree/bk-main
 
+# 环境变量
+Environment="PYTHONUNBUFFERED=1"
+
 # 日志
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=unitree-g1-voice
 
 [Install]
 WantedBy=multi-user.target
