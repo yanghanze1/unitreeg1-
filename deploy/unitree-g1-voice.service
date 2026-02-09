@@ -1,6 +1,7 @@
 [Unit]
 Description=Unitree G1 Voice Interaction Controller
-After=network.target
+After=network.target sound.target
+Wants=network.target
 
 [Service]
 Type=simple
@@ -9,7 +10,14 @@ Group=unitree
 WorkingDirectory=/home/unitree/bk-main
 ExecStart=/usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+
+# 硬件权限
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/home/unitree/bk-main
+
+# 日志
 StandardOutput=journal
 StandardError=journal
 
