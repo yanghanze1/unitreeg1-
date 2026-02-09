@@ -295,24 +295,24 @@ def main():
         global_mic_stream = global_pya.open(
             format=pyaudio.paInt16,  # 16位 PCM 格式
             channels=1,  # 单声道
-            rate=16000,  # 16kHz 采样率
+            rate=48000,  # 48kHz 采样率（与麦克风匹配）
             input=True,  # 输入流
             input_device_index=mic_device_index,  # 指定设备索引（None 表示默认）
             frames_per_buffer=MIC_CHUNK_FRAMES,  # 每次读取 3200 帧(约 200ms)
         )
     except Exception as mic_err:
         logger.warning(f"[Audio] 麦克风打开失败，尝试使用 PulseAudio: {mic_err}")
-        # 如果直接打开失败，尝试使用 PulseAudio 设备 "pulse"
+        # 如果直接打开失败，尝试使用 PulseAudio 设备
         try:
             global_mic_stream = global_pya.open(
                 format=pyaudio.paInt16,
                 channels=1,
-                rate=16000,
+                rate=48000,
                 input=True,
                 input_device_index=global_pya.get_default_input_device_info()['index'],
                 frames_per_buffer=MIC_CHUNK_FRAMES,
             )
-            logger.info("[Audio] 麦克风已使用 PulseAudio 后端打开")
+            logger.info("[Audio] 麦克风已使用默认设备打开 (48000Hz)")
         except Exception as e2:
             logger.error(f"[Audio] 麦克风打开最终失败: {e2}")
             global_mic_stream = None

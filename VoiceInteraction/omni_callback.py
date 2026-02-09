@@ -36,7 +36,7 @@ from config import FUNCTION_CALLING_CONFIG  # 导入 Function Calling 配置
 logger = logging.getLogger(__name__)  # 获取当前模块的日志记录器
 
 # 麦克风采样参数
-MIC_CHUNK_FRAMES = 3200  # 16kHz 下约 200ms（frames_per_buffer）
+MIC_CHUNK_FRAMES = 9600  # 48kHz 下约 200ms（frames_per_buffer）
 
 
 class OmniCallback(OmniRealtimeCallback):
@@ -215,25 +215,25 @@ class OmniCallback(OmniRealtimeCallback):
                     self.mic_stream = self.pya.open(
                         format=pyaudio.paInt16,
                         channels=1,
-                        rate=16000,
+                        rate=48000,
                         input=True,
                         input_device_index=device_to_use,
                         frames_per_buffer=MIC_CHUNK_FRAMES,
                     )
-                    logger.info(f"[Omni] 麦克风流已创建 (设备: {device_to_use})")
+                    logger.info(f"[Omni] 麦克风流已创建 (设备: {device_to_use}, 48000Hz, mono)")
                 else:
                     # 尝试不指定设备
                     self.mic_stream = self.pya.open(
                         format=pyaudio.paInt16,
                         channels=1,
-                        rate=16000,
+                        rate=48000,
                         input=True,
                         frames_per_buffer=MIC_CHUNK_FRAMES,
                     )
-                    logger.info("[Omni] 麦克风已创建 (使用自动选择)")
+                    logger.info("[Omni] 麦克风已创建 (使用自动选择, 48000Hz, mono)")
             except Exception as e:
                 logger.error(f"[Omni] 麦克风创建失败: {e}")
-                # 最后尝试：只打开流，不指定设备
+                # 最后尝试：降低采样率到 16000Hz
                 try:
                     self.mic_stream = self.pya.open(
                         format=pyaudio.paInt16,
@@ -242,7 +242,7 @@ class OmniCallback(OmniRealtimeCallback):
                         input=True,
                         frames_per_buffer=MIC_CHUNK_FRAMES,
                     )
-                    logger.info("[Omni] 麦克风已使用后备方式创建")
+                    logger.info("[Omni] 麦克风已使用 16000Hz 创建")
                 except Exception as e2:
                     logger.error(f"[Omni] 麦克风最终失败: {e2}")
                     self.mic_stream = None
