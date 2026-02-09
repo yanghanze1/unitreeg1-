@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deployment Script for Unitree G1 Voice Controller (无显示器版本)
-# 使用 systemd 用户服务 + linger
+# 使用 crontab @reboot 实现开机自启
 
 set -e
 
@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_NAME="bk-main"
 PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
 TARGET_DIR="/home/unitree/${PROJECT_NAME}"
-SERVICE_FILE="${TARGET_DIR}/deploy/unitree-g1-voice.service"
+START_SCRIPT="${TARGET_DIR}/scripts/start_systemd.sh"
 
 echo "========================================="
 echo "Unitree G1 Voice Controller 部署脚本"
@@ -28,7 +28,7 @@ fi
 
 # 1. 复制项目文件
 echo ""
-echo "[1/5] 部署项目文件 ..."
+echo "[1/4] 部署项目文件 ..."
 if [ "${PROJECT_DIR}" != "${TARGET_DIR}" ]; then
     if [ -d "${TARGET_DIR}" ]; then
         if [ "${TARGET_DIR}" != "${PROJECT_DIR}" ]; then
@@ -49,30 +49,40 @@ fi
 
 # 2. 设置执行权限
 echo ""
-echo "[2/5] 设置脚本执行权限 ..."
+echo "[2/4] 设置脚本执行权限 ..."
 sudo chmod +x "${TARGET_DIR}/scripts/"*.sh 2>/dev/null || true
 echo "[完成] 脚本权限已设置"
 
-# 3. 启用 linger（关键步骤）
+# 3. 创建启动脚本（处理 PulseAudio）
 echo ""
-echo "[3/5] 启用用户服务 linger ..."
-sudo loginctl enable-linger unitree 2>/dev/null || echo "[警告] 无法启用 linger，请手动运行: sudo loginctl enable-linger unitree"
-echo "[完成] linger 已启用"
+echo "[3/4] 配置启动脚本 ..."
+cat > "${START_SCRIPT}" << 'STARTSCRIPT'
+#!/bin/bash
+# 开机自启脚本
 
-# 4. 安装用户服务
-echo ""
-echo "[4/5] 安装 systemd 用户服务 ..."
-mkdir -p ~/.config/systemd/user
-cp "${SERVICE_FILE}" ~/.config/systemd/user/
-systemctl --user daemon-reload
-echo "[完成] systemd 用户服务已安装"
+# 等待系统就绪
+sleep 5
 
-# 5. 启用并启动服务
+# 设置 PulseAudio 环境变量
+export PULSE_SERVER=unix:/run/user/1000/pulse/native
+export XDG_RUNTIME_DIR=/run/user/1000
+export PYTHONPATH=/home/unitree/.local/lib/python3.8/site-packages:$PYTHONPATH
+
+# 启动程序
+cd /home/unitree/bk-main
+python3 VoiceInteraction/multimodal_interaction.py >> /tmp/unitree-g1-voice.log 2>&1 &
+STARTSCRIPT
+
+chmod +x "${START_SCRIPT}"
+echo "[完成] 启动脚本已创建"
+
+# 4. 配置 crontab 开机自启
 echo ""
-echo "[5/5] 启动服务 ..."
-systemctl --user enable unitree-g1-voice.service
-systemctl --user start unitree-g1-voice.service
-echo "[完成] 服务已启动"
+echo "[4/4] 配置开机自启 ..."
+crontab -l 2>/dev/null | grep -v "start_systemd.sh" > /tmp/current_cron || true
+echo "@reboot bash ${START_SCRIPT}" >> /tmp/current_cron
+crontab /tmp/current_cron
+echo "[完成] crontab 已配置"
 
 echo ""
 echo "========================================="
@@ -80,7 +90,7 @@ echo "✅ 部署完成!"
 echo "========================================="
 echo ""
 echo "🎯 预期效果:"
-echo "   机器人开机 → 自动运行 → 直接说话"
+echo "   机器人开机 → 等待 5 秒 → 自动启动 → 直接说话"
 echo ""
 echo "📋 操作流程:"
 echo "   1. 重启机器人: sudo reboot"
@@ -88,8 +98,7 @@ echo "   2. 等待约 15 秒程序启动"
 echo "   3. 直接对麦克风说话"
 echo ""
 echo "🛠️  手动命令:"
-echo "   查看状态: systemctl --user status unitree-g1-voice"
-echo "   查看日志: journalctl --user -u unitree-g1-voice -f"
-echo "   重启服务: systemctl --user restart unitree-g1-voice"
-echo "   停止服务: systemctl --user stop unitree-g1-voice"
+echo "   查看日志: tail -f /tmp/unitree-g1-voice.log"
+echo "   查看 crontab: crontab -l"
+echo "   删除自启: crontab -l | grep -v 'start_systemd.sh' | crontab -"
 echo ""
