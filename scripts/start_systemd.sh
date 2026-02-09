@@ -1,22 +1,19 @@
 #!/bin/bash
 # 开机自启脚本 - 完整音频配置
 
-LOG_FILE="/tmp/unitree-g1-voice.log"
 PROJECT_DIR="/home/unitree/bk-main"
+LOG_FILE="$PROJECT_DIR/unitree-g1-voice.log"
+
+# 确保日志文件可写
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE="./unitree-g1-voice.log"
+touch "$LOG_FILE"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE" 2>/dev/null || echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
 
 log "===== 启动脚本开始执行 ====="
 log "工作目录: $PROJECT_DIR"
-
-# 确保日志文件可写
-touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/home/unitree/bk-main/unitree-g1-voice.log"
-touch "$LOG_FILE" 2>/dev/null || LOG_FILE="./unitree-g1-voice.log"
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
 
 # 等待系统就绪
 sleep 5
