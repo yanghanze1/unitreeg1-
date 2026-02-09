@@ -1,6 +1,6 @@
 #!/bin/bash
 # Deployment Script for Unitree G1 Voice Controller (无显示器版本)
-# 用于机器人机载电脑，开机后自动运行，无需登录
+# 使用 systemd 用户服务 + linger
 
 set -e
 
@@ -28,12 +28,10 @@ fi
 
 # 1. 复制项目文件
 echo ""
-echo "[1/6] 部署项目文件 ..."
+echo "[1/5] 部署项目文件 ..."
 if [ "${PROJECT_DIR}" != "${TARGET_DIR}" ]; then
     if [ -d "${TARGET_DIR}" ]; then
-        if [ "${TARGET_DIR}" = "${PROJECT_DIR}" ]; then
-            echo "[Info] 源目录和目标目录相同，跳过复制"
-        else
+        if [ "${TARGET_DIR}" != "${PROJECT_DIR}" ]; then
             mv "${TARGET_DIR}" "${TARGET_DIR}.backup" 2>/dev/null || true
         fi
     fi
@@ -51,37 +49,29 @@ fi
 
 # 2. 设置执行权限
 echo ""
-echo "[2/6] 设置脚本执行权限 ..."
+echo "[2/5] 设置脚本执行权限 ..."
 sudo chmod +x "${TARGET_DIR}/scripts/"*.sh 2>/dev/null || true
 echo "[完成] 脚本权限已设置"
 
-# 3. 配置系统级 PulseAudio
+# 3. 启用 linger（关键步骤）
 echo ""
-echo "[3/6] 配置 PulseAudio ..."
-if [ -f "${TARGET_DIR}/scripts/setup_pulseaudio.sh" ]; then
-    sudo bash "${TARGET_DIR}/scripts/setup_pulseaudio.sh"
-else
-    echo "[警告] setup_pulseaudio.sh 不存在"
-fi
+echo "[3/5] 启用用户服务 linger ..."
+sudo loginctl enable-linger unitree 2>/dev/null || echo "[警告] 无法启用 linger，请手动运行: sudo loginctl enable-linger unitree"
+echo "[完成] linger 已启用"
 
-# 4. 复制并安装 systemd 服务
+# 4. 安装用户服务
 echo ""
-echo "[4/6] 安装 systemd 服务 ..."
-sudo cp "${SERVICE_FILE}" /etc/systemd/system/unitree-g1-voice.service
-sudo chmod 644 /etc/systemd/system/unitree-g1-voice.service
-sudo systemctl daemon-reload
-echo "[完成] systemd 服务已安装"
+echo "[4/5] 安装 systemd 用户服务 ..."
+mkdir -p ~/.config/systemd/user
+cp "${SERVICE_FILE}" ~/.config/systemd/user/
+systemctl --user daemon-reload
+echo "[完成] systemd 用户服务已安装"
 
-# 5. 启用开机自启
+# 5. 启用并启动服务
 echo ""
-echo "[5/6] 启用开机自启 ..."
-sudo systemctl enable unitree-g1-voice.service
-echo "[完成] 开机自启已启用"
-
-# 6. 启动服务
-echo ""
-echo "[6/6] 启动服务 ..."
-sudo systemctl start unitree-g1-voice.service
+echo "[5/5] 启动服务 ..."
+systemctl --user enable unitree-g1-voice.service
+systemctl --user start unitree-g1-voice.service
 echo "[完成] 服务已启动"
 
 echo ""
@@ -90,7 +80,7 @@ echo "✅ 部署完成!"
 echo "========================================="
 echo ""
 echo "🎯 预期效果:"
-echo "   机器人开机 → 电源启动 → 自动运行 → 直接说话"
+echo "   机器人开机 → 自动运行 → 直接说话"
 echo ""
 echo "📋 操作流程:"
 echo "   1. 重启机器人: sudo reboot"
@@ -98,9 +88,8 @@ echo "   2. 等待约 15 秒程序启动"
 echo "   3. 直接对麦克风说话"
 echo ""
 echo "🛠️  手动命令:"
-echo "   查看状态: sudo systemctl status unitree-g1-voice"
-echo "   查看日志: journalctl -u unitree-g1-voice -f"
-echo "   重启服务: sudo systemctl restart unitree-g1-voice"
-echo "   停止服务: sudo systemctl stop unitree-g1-voice"
-echo "   禁用开机: sudo systemctl disable unitree-g1-voice"
+echo "   查看状态: systemctl --user status unitree-g1-voice"
+echo "   查看日志: journalctl --user -u unitree-g1-voice -f"
+echo "   重启服务: systemctl --user restart unitree-g1-voice"
+echo "   停止服务: systemctl --user stop unitree-g1-voice"
 echo ""

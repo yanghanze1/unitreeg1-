@@ -5,20 +5,19 @@ Wants=pulseaudio.service
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=unitree
+Group=unitree
 WorkingDirectory=/home/unitree/bk-main
-ExecStart=/bin/bash -c 'sleep 5 && /home/unitree/bk-main/scripts/setup_audio.sh && PYTHONPATH=$HOME/.local/lib/python3.8/site-packages:$PYTHONPATH /usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py'
+ExecStart=/usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py
 Restart=on-failure
 RestartSec=15
 
 # Python 环境变量
 Environment="PYTHONPATH=/home/unitree/.local/lib/python3.8/site-packages:/home/unitree/.local/lib/python3.8/dist-packages"
 
-# PulseAudio 环境变量（使用 root 用户的 PulseAudio）
-Environment="PULSE_SERVER=unix:/run/pulse/native"
-Environment="XDG_RUNTIME_DIR=/run/user/0"
-Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
+# PulseAudio 环境变量
+Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
 
 # 硬件权限
 PrivateTmp=yes
@@ -31,4 +30,4 @@ StandardError=journal
 SyslogIdentifier=unitree-g1-voice
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
