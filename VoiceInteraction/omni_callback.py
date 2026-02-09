@@ -170,43 +170,70 @@ class OmniCallback(OmniRealtimeCallback):
 
     def on_open(self) -> None:
         """WebSocket 连接打开回调"""
-        logger.info("[Omni] connection opened; init microphone & player")  # 记录日志
+        logger.info("[Omni] connection opened; init microphone & player")
 
         # 如果音频设备未从外部注入，则在此初始化
-        if self.pya is None:  # 检查是否已有 PyAudio 实例
-            self.pya = pyaudio.PyAudio()  # 创建 PyAudio 实例
-            self._audio_externally_managed = False  # 标记为内部管理
+        if self.pya is None:
+            self.pya = pyaudio.PyAudio()
+            self._audio_externally_managed = False
         
-        # 如果麦克风流未初始化，尝试从环境变量获取设备索引或使用默认
+        # 如果麦克风流未初始化
         if self.mic_stream is None:
-            # 从环境变量获取麦克风设备索引
             import os
-            mic_device_index = os.getenv("MIC_DEVICE_INDEX", None)
-            if mic_device_index:
-                try:
-                    mic_device_index = int(mic_device_index)
-                    logger.info(f"[Omni] 使用指定麦克风设备索引: {mic_device_index}")
-                except ValueError:
-                    mic_device_index = None
+            
+            # 查找可用的麦克风设备
+            mic_device_index = None
+            pulse_device_index = None
+            
+            for i in range(self.pya.get_device_count()):
+                info = self.pya.get_device_info_by_index(i)
+                # 优先找 PulseAudio 设备
+                if info['maxInputChannels'] > 0:
+                    if 'pulse' in info['name'].lower():
+                        pulse_device_index = i
+                        logger.info(f"[Omni] 找到 Pulse 设备: {i} ({info['name']})")
+                    # 找 Jieli USB 麦克风
+                    if 'jieli' in info['name'].lower() and mic_device_index is None:
+                        mic_device_index = i
+                        logger.info(f"[Omni] 找到 Jieli 麦克风: {i} ({info['name']})")
+            
+            # 优先使用 Pulse 设备
+            if pulse_device_index is not None:
+                device_to_use = pulse_device_index
+            elif mic_device_index is not None:
+                device_to_use = mic_device_index
             else:
-                # 使用 PulseAudio 的默认设备
-                mic_device_index = self.pya.get_default_input_device_info()['index']
-                default_name = self.pya.get_default_input_device_info()['name']
-                logger.info(f"[Omni] 使用默认麦克风设备: {mic_device_index} ({default_name})")
+                # 使用系统默认
+                try:
+                    device_to_use = self.pya.get_default_input_device_info()['index']
+                    logger.info(f"[Omni] 使用系统默认设备: {device_to_use}")
+                except:
+                    device_to_use = None
             
             try:
-                self.mic_stream = self.pya.open(
-                    format=pyaudio.paInt16,  # 16位 PCM 格式
-                    channels=1,  # 单声道
-                    rate=16000,  # 16kHz 采样率
-                    input=True,  # 输入流
-                    input_device_index=mic_device_index,  # 指定设备索引
-                    frames_per_buffer=MIC_CHUNK_FRAMES,  # 每次读取 3200 帧(约 200ms)
-                )
-                logger.info(f"[Omni] 麦克风流已创建 (设备: {mic_device_index})")
+                if device_to_use is not None:
+                    self.mic_stream = self.pya.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=16000,
+                        input=True,
+                        input_device_index=device_to_use,
+                        frames_per_buffer=MIC_CHUNK_FRAMES,
+                    )
+                    logger.info(f"[Omni] 麦克风流已创建 (设备: {device_to_use})")
+                else:
+                    # 尝试不指定设备
+                    self.mic_stream = self.pya.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=16000,
+                        input=True,
+                        frames_per_buffer=MIC_CHUNK_FRAMES,
+                    )
+                    logger.info("[Omni] 麦克风已创建 (使用自动选择)")
             except Exception as e:
                 logger.error(f"[Omni] 麦克风创建失败: {e}")
-                # 最后尝试使用默认设备
+                # 最后尝试：只打开流，不指定设备
                 try:
                     self.mic_stream = self.pya.open(
                         format=pyaudio.paInt16,
@@ -215,7 +242,7 @@ class OmniCallback(OmniRealtimeCallback):
                         input=True,
                         frames_per_buffer=MIC_CHUNK_FRAMES,
                     )
-                    logger.info("[Omni] 麦克风已使用默认设备创建")
+                    logger.info("[Omni] 麦克风已使用后备方式创建")
                 except Exception as e2:
                     logger.error(f"[Omni] 麦克风最终失败: {e2}")
                     self.mic_stream = None
