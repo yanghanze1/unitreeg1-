@@ -350,7 +350,10 @@ class B64PCMPlayer:
         self._player_thread.join(timeout=1)  # 等待播放线程结束
         with contextlib.suppress(Exception):  # 忽略异常
             with self._stream_lock:  # 获取流操作锁
+                if self.player_stream and self.player_stream.is_active():
+                    self.player_stream.stop_stream()
                 self.player_stream.close()  # 关闭音频流
+        logger.info("[Player] 播放器已关闭")
 
 
 # 导出公共接口

@@ -257,8 +257,28 @@ class OmniCallback(OmniRealtimeCallback):
                     self.mic_stream = None
         
         # 播放器每次都需要重建（因为它依赖于当前会话的输出流）
-        if self.player is None:  # 只有在没有播放器时才创建
-            self.player = B64PCMPlayer(self.pya, sample_rate=24000, chunk_size_ms=100)  # 创建播放器
+        if self.player is None:
+            try:
+                self.player = B64PCMPlayer(self.pya, sample_rate=24000, chunk_size_ms=100)
+                logger.info("[Omni] 播放器已创建")
+            except Exception as e:
+                logger.error(f"[Omni] 播放器创建失败: {e}")
+                self.player = None
+        else:
+            # 播放器已存在，检查是否需要重建
+            try:
+                # 检查播放器流是否有效
+                if self.player.player_stream and not self.player.player_stream.is_active():
+                    logger.info("[Omni] 播放器流不活跃，尝试重建...")
+                    self.player = B64PCMPlayer(self.pya, sample_rate=24000, chunk_size_ms=100)
+                    logger.info("[Omni] 播放器已重建")
+            except Exception as e:
+                logger.warning(f"[Omni] 播放器检查失败，将重建: {e}")
+                self.player = None
+                try:
+                    self.player = B64PCMPlayer(self.pya, sample_rate=24000, chunk_size_ms=100)
+                except:
+                    self.player = None
 
         self._set_flag(0, reason="init_ready")  # 初始化完成
         
