@@ -1,25 +1,26 @@
 [Unit]
 Description=Unitree G1 Voice Interaction Controller
-After=network.target sound.target
-Wants=network.target
+After=network.target sound.target pulseaudio.service
+Wants=network.target pulseaudio.service
 
 [Service]
 Type=simple
 User=root
 Group=root
 WorkingDirectory=/home/unitree/bk-main
-ExecStart=/usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py
-ExecStartPre=/bin/bash -c 'sleep 5 && /home/unitree/bk-main/scripts/setup_audio.sh'
+ExecStart=/bin/bash -c 'sleep 10 && /usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py'
 Restart=on-failure
-RestartSec=10
+RestartSec=15
+
+# PulseAudio 环境变量
+Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
 
 # 硬件权限
 PrivateTmp=yes
 ProtectSystem=strict
 ReadWritePaths=/home/unitree/bk-main
-
-# 环境变量
-Environment="PYTHONUNBUFFERED=1"
 
 # 日志
 StandardOutput=journal
