@@ -53,36 +53,23 @@ echo "[2/4] 设置脚本执行权限 ..."
 sudo chmod +x "${TARGET_DIR}/scripts/"*.sh 2>/dev/null || true
 echo "[完成] 脚本权限已设置"
 
-# 3. 创建启动脚本（处理 PulseAudio）
+# 3. 配置 crontab 开机自启
 echo ""
-echo "[3/4] 配置启动脚本 ..."
-cat > "${START_SCRIPT}" << 'STARTSCRIPT'
-#!/bin/bash
-# 开机自启脚本
-
-# 等待系统就绪
-sleep 5
-
-# 设置 PulseAudio 环境变量
-export PULSE_SERVER=unix:/run/user/1000/pulse/native
-export XDG_RUNTIME_DIR=/run/user/1000
-export PYTHONPATH=/home/unitree/.local/lib/python3.8/site-packages:$PYTHONPATH
-
-# 启动程序
-cd /home/unitree/bk-main
-python3 VoiceInteraction/multimodal_interaction.py >> /tmp/unitree-g1-voice.log 2>&1 &
-STARTSCRIPT
-
-chmod +x "${START_SCRIPT}"
-echo "[完成] 启动脚本已创建"
-
-# 4. 配置 crontab 开机自启
-echo ""
-echo "[4/4] 配置开机自启 ..."
+echo "[3/4] 配置开机自启 ..."
 crontab -l 2>/dev/null | grep -v "start_systemd.sh" > /tmp/current_cron || true
 echo "@reboot bash ${START_SCRIPT}" >> /tmp/current_cron
 crontab /tmp/current_cron
 echo "[完成] crontab 已配置"
+
+# 4. 停止旧进程并启动新进程
+echo ""
+echo "[4/4] 启动服务 ..."
+# 停止旧的进程
+pkill -f "multimodal_interaction.py" 2>/dev/null || true
+sleep 2
+# 启动新进程
+bash "${START_SCRIPT}" &
+echo "[完成] 服务已启动"
 
 echo ""
 echo "========================================="
@@ -90,11 +77,11 @@ echo "✅ 部署完成!"
 echo "========================================="
 echo ""
 echo "🎯 预期效果:"
-echo "   机器人开机 → 等待 5 秒 → 自动启动 → 直接说话"
+echo "   机器人开机 → 等待 15 秒 → 自动启动 → 直接说话"
 echo ""
 echo "📋 操作流程:"
 echo "   1. 重启机器人: sudo reboot"
-echo "   2. 等待约 15 秒程序启动"
+echo "   2. 等待约 20 秒程序启动"
 echo "   3. 直接对麦克风说话"
 echo ""
 echo "🛠️  手动命令:"
