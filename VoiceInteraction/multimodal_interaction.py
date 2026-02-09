@@ -83,6 +83,12 @@ def get_flag() -> int:
         return flag  # 返回当前状态
 
 
+# ===================== 添加 SDK 路径 =====================
+SDK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "unitree_sdk2py")
+if os.path.exists(SDK_PATH) and SDK_PATH not in sys.path:
+    sys.path.insert(0, SDK_PATH)
+    logger.info(f"[SDK] 已添加路径: {SDK_PATH}")
+
 # ===================== Unitree G1 初始化 =====================
 try:
     from unitree_sdk2py.core.channel import ChannelFactoryInitialize  # 导入通道初始化模块
