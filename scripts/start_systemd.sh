@@ -1,5 +1,5 @@
 #!/bin/bash
-# 开机自启脚本 - 带设备指定
+# 开机自启脚本 - 完整音频配置
 
 LOG_FILE="/tmp/unitree-g1-voice.log"
 
@@ -10,30 +10,49 @@ log() {
 log "===== 启动脚本开始执行 ====="
 
 # 等待系统就绪
-sleep 10
+sleep 5
 
-# 配置 PulseAudio
-mkdir -p ~/.config/pulse
-cat > ~/.config/pulse/client.conf << 'EOF'
-autospawn = yes
-daemon-binary = /usr/bin/pulseaudio
-EOF
+# 杀掉旧的 PulseAudio 和程序
+pulseaudio -k 2>/dev/null || true
+pkill -9 -f multimodal_interaction.py 2>/dev/null || true
+sleep 2
 
-# 等待 PulseAudio 就绪
-log "等待 PulseAudio 就绪..."
-for i in {1..30}; do
+# 确保 /run/user/1000 存在
+mkdir -p /run/user/1000
+chmod 700 /run/user/1000
+
+# 启动 PulseAudio（作为用户进程）
+export XDG_RUNTIME_DIR=/run/user/1000
+pulseaudio --daemonize --log-target=journal --exit-idle-time=-1
+
+# 等待 PulseAudio 启动
+log "等待 PulseAudio 启动..."
+for i in {1..15}; do
     if pactl info &>/dev/null; then
-        log "PulseAudio 已就绪"
+        log "PulseAudio 已启动"
         break
     fi
     sleep 1
 done
 
-# 设置默认音频设备
+# 配置音频设备
 if pactl info &>/dev/null; then
-    pactl set-default-source alsa_input.usb-Jieli_Technology_USB_Composite_Device_853A4D1988FD7053-00.mono-fallback 2>/dev/null || true
-    pactl set-default-sink alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.analog-stereo 2>/dev/null || true
-    log "PulseAudio 设备已设置"
+    # 获取设备索引
+    MIC_SINK=$(pactl list sources short | grep "USB" | grep "Audio" | head -1 | awk '{print $1}')
+    PLAY_SINK=$(pactl list sinks short | grep "USB" | grep "Audio" | head -1 | awk '{print $1}')
+    
+    if [ -n "$MIC_SINK" ]; then
+        pactl set-default-source "$MIC_SINK"
+        log "麦克风已设置为: $MIC_SINK"
+    fi
+    
+    if [ -n "$PLAY_SINK" ]; then
+        pactl set-default-sink "$PLAY_SINK"
+        log "扬声器已设置为: $PLAY_SINK"
+    fi
+    
+    # 设置音量
+    pactl set-sink-volume "$PLAY_SINK" 100% 2>/dev/null || true
 fi
 
 # 设置环境变量
@@ -41,10 +60,9 @@ export PULSE_SERVER=unix:/run/user/1000/pulse/native
 export XDG_RUNTIME_DIR=/run/user/1000
 export PYTHONPATH=/home/unitree/.local/lib/python3.8/site-packages:$PYTHONPATH
 
-# 指定麦克风设备索引（设备 1: USB Composite Device）
-export MIC_DEVICE_INDEX=1
+# 指定麦克风设备（使用 Pulse "default" 设备）
+export MIC_DEVICE_INDEX=
 
-log "环境变量已设置: MIC_DEVICE_INDEX=1"
 log "启动语音交互程序..."
 
 # 启动程序
