@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${SCRIPT_DIR}"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SERVICE_FILE="${SCRIPT_DIR}/deploy/unitree-g1-voice.service"
 AUDIO_SCRIPT="${SCRIPT_DIR}/scripts/setup_audio.sh"
 
