@@ -60,10 +60,10 @@ export PULSE_SERVER=unix:/run/user/1000/pulse/native
 export XDG_RUNTIME_DIR=/run/user/1000
 export PYTHONPATH=/home/unitree/.local/lib/python3.8/site-packages:$PYTHONPATH
 
-# 指定麦克风设备（使用 Pulse "default" 设备）
-export MIC_DEVICE_INDEX=
+# 使用 PulseAudio 的默认设备
+unset MIC_DEVICE_INDEX
 
-log "启动语音交互程序..."
+log "启动语音交互程序（使用 PulseAudio 默认设备）..."
 
 # 启动程序
 cd /home/unitree/bk-main
