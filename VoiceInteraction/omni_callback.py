@@ -176,6 +176,15 @@ class OmniCallback(OmniRealtimeCallback):
         if self.pya is None:
             self.pya = pyaudio.PyAudio()
             self._audio_externally_managed = False
+        else:
+            # PyAudio 实例存在，确保它仍然有效
+            try:
+                # 检查是否还能获取设备信息
+                self.pya.get_device_count()
+            except:
+                # PyAudio 实例无效，重新创建
+                logger.info("[Omni] PyAudio 实例无效，重新创建")
+                self.pya = pyaudio.PyAudio()
         
         # 如果麦克风流未初始化
         if self.mic_stream is None:
@@ -269,20 +278,16 @@ class OmniCallback(OmniRealtimeCallback):
         注意：如果音频设备是外部注入的（_audio_externally_managed=True），
         则不关闭相关资源，以避免重连时设备索引漂移。
         """
-        # 只有在音频设备由内部管理时才销毁
-        if not self._audio_externally_managed:  # 检查是否为外部管理
-            with contextlib.suppress(Exception):  # 忽略异常
-                if self.player:  # 如果播放器存在
-                    self.player.shutdown()  # 关闭播放器
-                    self.player = None
-            with contextlib.suppress(Exception):  # 忽略异常
-                if self.mic_stream:  # 如果麦克风流存在
-                    self.mic_stream.close()  # 关闭麦克风流
-                    self.mic_stream = None  # 清空引用
-            with contextlib.suppress(Exception):  # 忽略异常
-                if self.pya:  # 如果 PyAudio 存在
-                    self.pya.terminate()  # 终止 PyAudio
-                    self.pya = None  # 清空引用
+        # 清理音频流，但保留 PyAudio 实例（避免设备状态混乱）
+        with contextlib.suppress(Exception):  # 忽略异常
+            if self.player:  # 如果播放器存在
+                self.player.shutdown()  # 关闭播放器
+                self.player = None
+        with contextlib.suppress(Exception):  # 忽略异常
+            if self.mic_stream:  # 如果麦克风流存在
+                self.mic_stream.close()  # 关闭麦克风流
+                self.mic_stream = None  # 清空引用
+        # 注意：不终止 PyAudio，只关闭流，让设备可以重用
 
     def _try_cancel_server_response(self):
         """
