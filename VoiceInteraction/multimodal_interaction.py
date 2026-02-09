@@ -84,10 +84,24 @@ def get_flag() -> int:
 
 
 # ===================== 添加 SDK 路径 =====================
-SDK_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "unitree_sdk2py")
-if os.path.exists(SDK_PATH) and SDK_PATH not in sys.path:
+# 查找 unitree_sdk2py 路径（支持多种项目结构）
+possible_paths = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "unitree_sdk2py"),
+    "/home/unitree/BK/VoiceInteraction/unitree_sdk2py",
+    "/home/unitree/beijing/VoiceInteraction/unitree_sdk2py",
+    "/home/unitree/bk-main/unitree_sdk2py",
+]
+SDK_PATH = None
+for path in possible_paths:
+    if os.path.exists(path):
+        SDK_PATH = path
+        break
+
+if SDK_PATH and SDK_PATH not in sys.path:
     sys.path.insert(0, SDK_PATH)
     logger.info(f"[SDK] 已添加路径: {SDK_PATH}")
+elif not SDK_PATH:
+    logger.warning("[SDK] 未找到 unitree_sdk2py 目录")
 
 # ===================== Unitree G1 初始化 =====================
 try:
