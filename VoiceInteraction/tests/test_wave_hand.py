@@ -13,9 +13,9 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from tool_schema import TOOL_WAVE_HAND, ROBOT_TOOLS, TOOL_NAME_CN
 from bridge import execute_tool_call, _execute_wave_hand
-from multimodal_interaction import (
+from command_detector import (
     try_execute_g1_by_local_keywords,
-    _detect_self_introduction
+    detect_self_introduction as _detect_self_introduction
 )
 
 # ===================== 工具定义测试 =====================
@@ -105,22 +105,14 @@ def test_wave_hand_keyword_matching(keyword):
     mock_action_manager = Mock()
     mock_action_manager._running = True
     
-    # patch multimodal_interaction 中的全局 g1_arm 和 g1
-    # 注意：我们的代码里也检查 g1/g1_arm 是否存在
-    with patch('multimodal_interaction.g1_arm') as mock_g1_arm, \
-         patch('multimodal_interaction.g1') as mock_g1:
-        
-        mock_g1_arm.ExecuteAction = Mock()
-        
-        # 模拟 g1 和 g1_arm 都已经初始化
-        # try_execute_g1_by_local_keywords 内部只检查 g1 (实际上它不检查 g1_arm? 
-        # 等等，之前的代码片段我把本地关键词也改成检查 g1_arm 了)
-        # 所以必须 mock g1_arm
-        
-        result = try_execute_g1_by_local_keywords(keyword, mock_action_manager)
-        
-        assert result is True
-        mock_g1_arm.ExecuteAction.assert_called_once_with(25)
+    # 新模块使用参数传递，不需要 patch 全局变量
+    mock_g1_arm = Mock()
+    mock_g1_arm.ExecuteAction = Mock()
+    
+    result = try_execute_g1_by_local_keywords(keyword, mock_action_manager, mock_g1_arm)
+    
+    assert result is True
+    mock_g1_arm.ExecuteAction.assert_called_once_with(25)
 
 
 def test_wave_hand_keyword_not_matched():
@@ -128,15 +120,15 @@ def test_wave_hand_keyword_not_matched():
     mock_action_manager = Mock()
     mock_action_manager._running = True
     
-    with patch('multimodal_interaction.g1_arm') as mock_g1_arm, \
-         patch('multimodal_interaction.g1') as mock_g1:
-        
-        # "前进" 命中移动逻辑，不应触发挥手
-        result = try_execute_g1_by_local_keywords("前进", mock_action_manager)
-        
-        assert result is True  # 被处理了
-        mock_g1_arm.ExecuteAction.assert_not_called()
-        # 移动逻辑会调用 update_target_velocity，这里我们只需确保护手没被调用
+    mock_g1_arm = Mock()
+    mock_g1_arm.ExecuteAction = Mock()
+    
+    # "前进" 命中移动逻辑，不应触发挥手
+    result = try_execute_g1_by_local_keywords("前进", mock_action_manager, mock_g1_arm)
+    
+    assert result is True  # 被处理了
+    mock_g1_arm.ExecuteAction.assert_not_called()
+    # 移动逻辑会调用 update_target_velocity，这里我们只需确保护手没被调用
 
 
 # ===================== 自我介绍检测测试 =====================
@@ -180,11 +172,9 @@ def test_wave_hand_full_pipeline():
     mock_g1.WaveHand = Mock() # 不应被调用
     mock_g1_arm.ExecuteAction = Mock()
     
-    # 场景1: 关键词触发
-    with patch('multimodal_interaction.g1_arm', mock_g1_arm), \
-         patch('multimodal_interaction.g1', mock_g1):
-        result = try_execute_g1_by_local_keywords("挥手", mock_action_manager)
-        assert result is True
+    # 场景1: 关键词触发 (新模块使用参数传递而非全局变量)
+    result = try_execute_g1_by_local_keywords("挥手", mock_action_manager, mock_g1_arm)
+    assert result is True
     
     # 场景2: 工具调用触发
     result = execute_tool_call(

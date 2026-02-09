@@ -1,7 +1,7 @@
 
 import pytest  # 导入pytest测试框架
 from unittest.mock import MagicMock  # 导入Mock工具
-from VoiceInteraction.multimodal_interaction import try_execute_g1_by_local_keywords  # 导入被测函数
+from VoiceInteraction.command_detector import try_execute_g1_by_local_keywords  # 导入被测函数（已迁移到 command_detector 模块）
 
 
 class TestKeywords:

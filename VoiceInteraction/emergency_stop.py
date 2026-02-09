@@ -11,6 +11,7 @@ import threading
 import logging
 import sys
 import platform
+import time  # 移至顶部：避免在循环内部重复导入
 
 # 根据操作系统导入不同的键盘监听库
 IS_WINDOWS = platform.system() == "Windows"
@@ -70,8 +71,7 @@ def _monitor_windows(action_manager, g1_client):
                 if char_key == ' ':
                     _trigger_emergency_stop(action_manager, g1_client)
             else:
-                import time
-                time.sleep(0.1)
+                time.sleep(0.1)  # time 已在文件顶部导入
     except Exception as e:
         logger.error(f"[EmergencyStop] Windows 监听异常: {e}")
 
