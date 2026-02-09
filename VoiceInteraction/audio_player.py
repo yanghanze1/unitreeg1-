@@ -110,14 +110,28 @@ class B64PCMPlayer:
             )
         except OSError as e:
             logger.error(f"[Player] 无法使用 {self._device_sample_rate}Hz 打开音频流: {e}")
-            logger.info("[Player] 尝试使用 44100Hz 作为备选采样率")
-            self._device_sample_rate = 44100
-            return self.pya.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=44100,
-                output=True
-            )
+            # 尝试使用默认设备（可能是 PulseAudio）
+            try:
+                default_output = self.pya.get_default_output_device_info()
+                logger.info(f"[Player] 尝试使用默认输出设备: {default_output['name']}")
+                return self.pya.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=int(float(default_output['defaultSampleRate'])),
+                    output=True,
+                    output_device_index=default_output['index']
+                )
+            except Exception as e2:
+                logger.error(f"[Player] 默认设备也失败: {e2}")
+                # 最后尝试 44100Hz
+                logger.info("[Player] 尝试使用 44100Hz 作为备选")
+                self._device_sample_rate = 44100
+                return self.pya.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=44100,
+                    output=True
+                )
 
     def _set_not_idle(self):
         """设置为非空闲状态"""

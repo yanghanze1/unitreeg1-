@@ -253,7 +253,23 @@ def main():
     import pyaudio  # 导入 PyAudio
     
     logger.info("[Audio] 初始化音频设备...")
-    global_pya = pyaudio.PyAudio()  # 创建全局 PyAudio 实例
+    
+    # 创建 PyAudio 实例
+    global_pya = pyaudio.PyAudio()
+    
+    # 查找 PulseAudio hostapi
+    pulse_hostapi = None
+    for i in range(global_pya.get_host_api_count()):
+        api_info = global_pya.get_host_api_info_by_index(i)
+        if api_info['type'] == pyaudio.paInDevelopment:  # paInDevelopment = 2 可能是 PulseAudio
+            if 'pulse' in api_info['name'].lower():
+                pulse_hostapi = i
+                logger.info(f"[Audio] 找到 PulseAudio hostapi: {i} ({api_info['name']})")
+                break
+    
+    # 如果有 PulseAudio，尝试使用它
+    if pulse_hostapi is not None:
+        logger.info(f"[Audio] 尝试使用 PulseAudio hostapi: {pulse_hostapi}")
     
     # 列出所有音频设备，帮助调试
     logger.info("[Audio] 可用音频输入设备:")
@@ -275,14 +291,31 @@ def main():
         logger.info("[Audio] 使用默认麦克风设备")
     
     # 创建全局麦克风流
-    global_mic_stream = global_pya.open(
-        format=pyaudio.paInt16,  # 16位 PCM 格式
-        channels=1,  # 单声道
-        rate=16000,  # 16kHz 采样率
-        input=True,  # 输入流
-        input_device_index=mic_device_index,  # 指定设备索引（None 表示默认）
-        frames_per_buffer=MIC_CHUNK_FRAMES,  # 每次读取 3200 帧(约 200ms)
-    )
+    try:
+        global_mic_stream = global_pya.open(
+            format=pyaudio.paInt16,  # 16位 PCM 格式
+            channels=1,  # 单声道
+            rate=16000,  # 16kHz 采样率
+            input=True,  # 输入流
+            input_device_index=mic_device_index,  # 指定设备索引（None 表示默认）
+            frames_per_buffer=MIC_CHUNK_FRAMES,  # 每次读取 3200 帧(约 200ms)
+        )
+    except Exception as mic_err:
+        logger.warning(f"[Audio] 麦克风打开失败，尝试使用 PulseAudio: {mic_err}")
+        # 如果直接打开失败，尝试使用 PulseAudio 设备 "pulse"
+        try:
+            global_mic_stream = global_pya.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=16000,
+                input=True,
+                input_device_index=global_pya.get_default_input_device_info()['index'],
+                frames_per_buffer=MIC_CHUNK_FRAMES,
+            )
+            logger.info("[Audio] 麦克风已使用 PulseAudio 后端打开")
+        except Exception as e2:
+            logger.error(f"[Audio] 麦克风打开最终失败: {e2}")
+            global_mic_stream = None
     logger.info("[Audio] 麦克风流已创建")
     
     # 导入 B64PCMPlayer (确保这里可见)
