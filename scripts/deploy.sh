@@ -28,7 +28,7 @@ fi
 
 # 1. 复制项目文件
 echo ""
-echo "[1/5] 部署项目文件 ..."
+echo "[1/6] 部署项目文件 ..."
 if [ "${PROJECT_DIR}" != "${TARGET_DIR}" ]; then
     if [ -d "${TARGET_DIR}" ]; then
         if [ "${TARGET_DIR}" = "${PROJECT_DIR}" ]; then
@@ -51,27 +51,36 @@ fi
 
 # 2. 设置执行权限
 echo ""
-echo "[2/5] 设置脚本执行权限 ..."
+echo "[2/6] 设置脚本执行权限 ..."
 sudo chmod +x "${TARGET_DIR}/scripts/"*.sh 2>/dev/null || true
 echo "[完成] 脚本权限已设置"
 
-# 3. 复制并安装 systemd 服务
+# 3. 配置系统级 PulseAudio
 echo ""
-echo "[3/5] 安装 systemd 服务 ..."
+echo "[3/6] 配置 PulseAudio ..."
+if [ -f "${TARGET_DIR}/scripts/setup_pulseaudio.sh" ]; then
+    sudo bash "${TARGET_DIR}/scripts/setup_pulseaudio.sh"
+else
+    echo "[警告] setup_pulseaudio.sh 不存在"
+fi
+
+# 4. 复制并安装 systemd 服务
+echo ""
+echo "[4/6] 安装 systemd 服务 ..."
 sudo cp "${SERVICE_FILE}" /etc/systemd/system/unitree-g1-voice.service
 sudo chmod 644 /etc/systemd/system/unitree-g1-voice.service
 sudo systemctl daemon-reload
 echo "[完成] systemd 服务已安装"
 
-# 4. 启用开机自启
+# 5. 启用开机自启
 echo ""
-echo "[4/5] 启用开机自启 ..."
+echo "[5/6] 启用开机自启 ..."
 sudo systemctl enable unitree-g1-voice.service
 echo "[完成] 开机自启已启用"
 
-# 5. 启动服务
+# 6. 启动服务
 echo ""
-echo "[5/5] 启动服务 ..."
+echo "[6/6] 启动服务 ..."
 sudo systemctl start unitree-g1-voice.service
 echo "[完成] 服务已启动"
 

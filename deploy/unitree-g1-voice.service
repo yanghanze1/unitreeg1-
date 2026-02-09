@@ -1,25 +1,24 @@
 [Unit]
 Description=Unitree G1 Voice Interaction Controller
-After=network.target sound.target
-Wants=network.target
+After=network.target pulseaudio.service
+Wants=pulseaudio.service
 
 [Service]
 Type=simple
-User=unitree
-Group=unitree
+User=root
+Group=root
 WorkingDirectory=/home/unitree/bk-main
-ExecStart=/bin/bash -c 'sleep 10 && PYTHONPATH=$HOME/.local/lib/python3.8/site-packages:$PYTHONPATH /usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py'
+ExecStart=/bin/bash -c 'sleep 5 && /home/unitree/bk-main/scripts/setup_audio.sh && PYTHONPATH=$HOME/.local/lib/python3.8/site-packages:$PYTHONPATH /usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py'
 Restart=on-failure
 RestartSec=15
 
 # Python 环境变量
 Environment="PYTHONPATH=/home/unitree/.local/lib/python3.8/site-packages:/home/unitree/.local/lib/python3.8/dist-packages"
-Environment="PATH=/home/unitree/.local/bin:/usr/local/bin:/usr/bin:/bin"
 
-# PulseAudio 环境变量
-Environment="PULSE_SERVER=unix:/run/user/1000/pulse/native"
-Environment="XDG_RUNTIME_DIR=/run/user/1000"
-Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
+# PulseAudio 环境变量（使用 root 用户的 PulseAudio）
+Environment="PULSE_SERVER=unix:/run/pulse/native"
+Environment="XDG_RUNTIME_DIR=/run/user/0"
+Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket"
 
 # 硬件权限
 PrivateTmp=yes
