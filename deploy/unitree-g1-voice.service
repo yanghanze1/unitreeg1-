@@ -1,7 +1,6 @@
 [Unit]
 Description=Unitree G1 Voice Interaction Controller
-After=network.target audio.target
-Wants=network.target audio.target
+After=network.target
 
 [Service]
 Type=simple
@@ -9,14 +8,10 @@ User=unitree
 Group=unitree
 WorkingDirectory=/home/unitree/bk-main
 ExecStart=/usr/bin/python3 /home/unitree/bk-main/VoiceInteraction/multimodal_interaction.py
-ExecStartPre=/home/unitree/bk-main/scripts/setup_audio.sh
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-
-# 硬件权限
-DevicePolicy=auto
 
 [Install]
 WantedBy=multi-user.target

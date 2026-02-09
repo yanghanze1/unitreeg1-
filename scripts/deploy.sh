@@ -77,15 +77,40 @@ echo "[4/4] 启用开机自启 ..."
 sudo systemctl enable unitree-g1-voice.service
 echo "[完成] 开机自启已启用"
 
+# 5. 配置用户自启动
+echo ""
+echo "[5/5] 配置用户自启动脚本 ..."
+mkdir -p ~/.config/autostart
+cat > ~/.config/autostart/unitree-g1-voice.desktop << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=Unitree G1 Voice Controller
+Comment=Start Unitree G1 Voice Interaction Controller
+Exec=/home/unitree/bk-main/scripts/start_user.sh
+Terminal=false
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+EOF
+echo "[完成] 用户自启动已配置（登录后自动运行）"
+
 echo ""
 echo "========================================="
 echo "部署完成!"
 echo "========================================="
 echo ""
-echo "常用命令:"
+echo "使用说明:"
+echo ""
+echo "方式1 - 系统服务（后台运行）:"
 echo "  启动服务:     sudo systemctl start unitree-g1-voice"
 echo "  停止服务:     sudo systemctl stop unitree-g1-voice"
 echo "  查看状态:     sudo systemctl status unitree-g1-voice"
 echo "  查看日志:     journalctl -u unitree-g1-voice -f"
-echo "  禁用开机:     sudo systemctl disable unitree-g1-voice"
 echo ""
+echo "方式2 - 用户登录（前台运行，推荐）:"
+echo "  登录后自动启动语音交互程序"
+echo "  按 Ctrl+C 停止"
+echo ""
+echo "手动启动:       bash /home/unitree/bk-main/scripts/start_user.sh"
+echo ""
+echo "禁用开机:       sudo systemctl disable unitree-g1-voice"
